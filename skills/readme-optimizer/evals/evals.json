@@ -1,0 +1,23 @@
+{
+  "skill_name": "readme-optimizer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我刚刚为ChatLog插件添加了搜索状态保持功能，当页面变化时保持搜索过滤状态，不会自动跳回到显示所有消息。请帮我将这个优化写入README.md文件。",
+      "expected_output": "README.md文件已更新，添加了搜索状态保持功能的文档",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我为ChatLog插件添加了可拖动调整大小的功能，用户可以通过拖动分隔条调整历史对话列表的宽度。请帮我将这个优化写入README.md文件。",
+      "expected_output": "README.md文件已更新，添加了可拖动调整大小功能的文档",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "我优化了ChatLog插件的文件消息处理功能，现在可以智能识别文件附件并显示[文件]标记。请帮我将这个优化写入README.md文件。",
+      "expected_output": "README.md文件已更新，添加了文件消息处理功能的文档",
+      "files": []
+    }
+  ]
+}
