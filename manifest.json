@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "storage",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "action": {
     "default_title": "ChatLog",
@@ -18,7 +19,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://*.doubao.com/*", "https://*.kimi.com/*"],
+      "matches": ["https://chatgpt.com/*", "https://*.doubao.com/*", "https://kimi.com/*", "https://*.kimi.com/*" ],
       "js": ["content.js"],
       "css": ["style.css"]
     }
