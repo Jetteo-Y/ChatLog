@@ -18,7 +18,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*"],
+      "matches": ["https://chatgpt.com/*", "https://*.doubao.com/*", "https://*.kimi.com/*"],
       "js": ["content.js"],
       "css": ["style.css"]
     }
