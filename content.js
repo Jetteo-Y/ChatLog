@@ -447,6 +447,245 @@ class DoubaoAdapter extends PlatformAdapter {
   }
 }
 
+// 千问平台适配器
+class QwenAdapter extends PlatformAdapter {
+  // 提取用户消息元素
+  extractUserMessages(clearCache = true) {
+    const userMessages = [];
+    
+    // 千问平台的用户消息容器选择器
+    const userMessageSelector = '.questionItem-u8_ahH';
+    
+    try {
+      // 查找用户消息容器
+      const messageContainers = document.querySelectorAll(userMessageSelector);
+      console.log('千问平台找到的用户消息容器数量:', messageContainers.length);
+      
+      messageContainers.forEach((container, index) => {
+        // 查找消息内容元素
+        const contentElement = container.querySelector('.bubble-VIVxZ8');
+        if (contentElement) {
+          console.log('千问平台第', index, '个容器的内容元素:', contentElement);
+          
+          const id = this.getMessageId(container, index);
+          const content = this.getMessageContent(contentElement);
+          const preview = this.generatePreview(content);
+          
+          console.log('千问平台第', index, '个消息的内容:', content);
+          
+          if (content && content !== '[消息]' && content.trim().length > 1) {
+            userMessages.push({
+              id,
+              content,
+              preview,
+              index,
+              element: container // 存储整个容器，方便后续跳转
+            });
+          }
+        }
+      });
+      
+      console.log('千问平台最终提取的用户消息数量:', userMessages.length);
+    } catch (error) {
+      console.error('千问平台提取消息失败:', error);
+    }
+    
+    return userMessages;
+  }
+  
+  // 检查是否包含文件附件
+  hasFileAttachment(messageElement) {
+    // 查找常见的文件附件特征
+    const fileSelectors = [
+      '[data-testid*="file"]',
+      '[data-testid*="attachment"]',
+      '[role*="file"]',
+      'input[type="file"]',
+      'img[src*="file"]', 
+      'img[alt*="文件"]',
+      '.file', 
+      '.attachment', 
+      '.upload',
+      '[aria-label*="文件"]',
+      '[aria-label*="附件"]'
+    ];
+    
+    for (const selector of fileSelectors) {
+      try {
+        if (messageElement.querySelector(selector)) {
+          return true;
+        }
+      } catch (e) {
+        // 忽略无效选择器
+      }
+    }
+    
+    // 检查是否有包含文件的文本特征
+    const text = messageElement.textContent;
+    if (text.includes('上传') || text.includes('文件') || 
+        text.includes('.pdf') || text.includes('.docx') || 
+        text.includes('.xlsx') || text.includes('.txt') ||
+        text.includes('.jpg') || text.includes('.png') ||
+        text.includes('.md') || text.includes('.csv')) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  // 获取消息内容
+  getMessageContent(messageElement) {
+    let content = '';
+    let hasFile = this.hasFileAttachment(messageElement);
+    let fileName = this.extractFileName(messageElement);
+    
+    // 查找所有可能包含文本内容的元素
+    const allTextElements = messageElement.querySelectorAll('*');
+    const textFragments = [];
+    
+    allTextElements.forEach(el => {
+      // 排除script, style等元素
+      if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') return;
+      
+      // 获取直接子节点的文本
+      Array.from(el.childNodes).forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent.trim();
+          if (text.length > 0) {
+            textFragments.push(text);
+          }
+        }
+      });
+    });
+    
+    // 去重并合并
+    const uniqueTexts = [...new Set(textFragments)];
+    content = uniqueTexts.join(' ');
+    
+    // 如果没有找到文本，使用整个元素的文本作为后备
+    if (!content || content.length === 0) {
+      content = messageElement.textContent.trim();
+    }
+    
+    // 清理文本，移除重复和多余的空格
+    content = content.replace(/\s+/g, ' ').trim();
+    
+    // 构建最终的内容
+    let finalContent = '';
+    
+    if (hasFile) {
+      if (fileName) {
+        finalContent = `[文件] ${fileName}`;
+        if (content && content !== fileName) {
+          finalContent += ` ${content}`;
+        }
+      } else if (content) {
+        finalContent = `[文件] ${content}`;
+      } else {
+        finalContent = '[文件]';
+      }
+    } else if (content) {
+      finalContent = content;
+    } else {
+      finalContent = '[消息]';
+    }
+    
+    return finalContent;
+  }
+  
+  // 提取文件名（如果可能）
+  extractFileName(messageElement) {
+    // 尝试从各种属性中提取文件名
+    const selectors = [
+      '[title]',
+      '[aria-label]',
+      '[alt]',
+      '[data-file-name]',
+      '[data-name]'
+    ];
+    
+    for (const selector of selectors) {
+      const elements = messageElement.querySelectorAll(selector);
+      for (const el of elements) {
+        let fileName = '';
+        if (el.title && el.title.length > 0 && el.title.length < 100) {
+          fileName = el.title;
+        } else if (el.getAttribute('aria-label') && 
+                   el.getAttribute('aria-label').length > 0 && 
+                   el.getAttribute('aria-label').length < 100) {
+          fileName = el.getAttribute('aria-label');
+        } else if (el.alt && el.alt.length > 0 && el.alt.length < 100) {
+          fileName = el.alt;
+        } else if (el.dataset.fileName) {
+          fileName = el.dataset.fileName;
+        } else if (el.dataset.name) {
+          fileName = el.dataset.name;
+        }
+        
+        if (fileName && !fileName.includes(' ')) { // 简单的文件名检查
+          return fileName;
+        }
+      }
+    }
+    
+    return null;
+  }
+  
+  // 获取消息ID
+  getMessageId(messageElement, index) {
+    // 尝试从data-msgid属性获取ID
+    const msgId = messageElement.getAttribute('data-msgid');
+    if (msgId) {
+      return `msg-qwen-${msgId}`;
+    }
+    // 如果没有data-msgid属性，使用索引生成ID
+    return `msg-qwen-${index}`;
+  }
+  
+  // 生成预览文本
+  generatePreview(content) {
+    // 限制预览长度为100个字符
+    return content.length > 100 ? content.substring(0, 100) + '...' : content;
+  }
+  
+  // 跳转到消息位置
+  scrollToMessage(messageId) {
+    // 查找对应的消息元素
+    let messageElement;
+    
+    // 首先尝试通过ID查找
+    if (messageId.startsWith('msg-')) {
+      // 这是我们生成的ID，需要通过其他方式查找
+      const userMessages = this.extractUserMessages();
+      const targetMessage = userMessages.find(msg => msg.id === messageId);
+      if (targetMessage) {
+        messageElement = targetMessage.element;
+      }
+    } else {
+      // 尝试通过data-message-id或id查找
+      messageElement = document.querySelector(`[data-message-id="${messageId}"]`) || 
+                      document.getElementById(messageId);
+    }
+    
+    if (messageElement) {
+      // 滚动到元素位置
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      // 添加高亮效果
+      messageElement.classList.add('message-highlight');
+      
+      // 3秒后移除高亮
+      setTimeout(() => {
+        messageElement.classList.remove('message-highlight');
+      }, 1500);
+      
+      return true;
+    }
+    
+    return false;
+  }
+}
+
 // Kimi平台适配器
 class KimiAdapter extends PlatformAdapter {
   // 提取用户消息元素
@@ -718,6 +957,11 @@ class ChatHistoryPlugin {
       else if (currentUrl.includes('chatgpt.com')) {
         console.log('使用ChatGPTAdapter');
         return new ChatGPTAdapter();
+      }
+      // 检查是否为千问平台
+      else if (currentUrl.includes('qianwen.com')) {
+        console.log('使用QwenAdapter');
+        return new QwenAdapter();
       }
       // 默认为ChatGPT适配器
       else {

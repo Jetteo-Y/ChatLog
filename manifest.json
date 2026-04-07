@@ -19,7 +19,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://*.doubao.com/*", "https://kimi.com/*", "https://*.kimi.com/*" ],
+      "matches": ["https://chatgpt.com/*", "https://*.doubao.com/*", "https://kimi.com/*", "https://*.kimi.com/*", "https://www.qianwen.com/*", "https://qianwen.com/*" ],
       "js": ["content.js"],
       "css": ["style.css"]
     }
