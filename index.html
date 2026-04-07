@@ -533,14 +533,22 @@
     <!-- 导航栏 -->
     <nav class="navbar">
         <div class="container">
-            <a href="#" class="logo">ChatLog <span>TT&LL</span></a>
+            <a href="index.html" class="logo">ChatLog <span>TT&LL</span></a>
             <ul class="nav-links">
-                <li><a href="#features">功能</a></li>
-                <li><a href="#tech">技术</a></li>
-                <li><a href="#platforms">平台</a></li>
-                <li><a href="#installation">安装</a></li>
+                <li><a href="index.html#features">功能</a></li>
+                <li><a href="index.html#tech">技术</a></li>
+                <li><a href="index.html#platforms">平台</a></li>
+                <li><a href="index.html#installation">安装</a></li>
             </ul>
-            <a href="#installation" class="cta-button">开始使用</a>
+            <div id="authLinks">
+                <!-- 未登录状态 -->
+                <a href="login.html" class="cta-button">登录</a>
+            </div>
+            <div id="userInfo" style="display: none;">
+                <!-- 登录状态 -->
+                <span id="userName" style="margin-right: 15px; color: var(--text-color); font-weight: 500;"></span>
+                <button id="logoutButton" class="cta-button" style="background-color: transparent; color: var(--primary-color); border: 1px solid var(--primary-color);">登出</button>
+            </div>
         </div>
     </nav>
 
@@ -739,6 +747,17 @@
     <script>
         // 页面滚动动画
         document.addEventListener('DOMContentLoaded', function() {
+            // 检查登录状态
+            checkLoginStatus();
+            
+            // 登出按钮点击事件
+            const logoutButton = document.getElementById('logoutButton');
+            if (logoutButton) {
+                logoutButton.addEventListener('click', function() {
+                    logout();
+                });
+            }
+            
             const observerOptions = {
                 threshold: 0.1,
                 rootMargin: '0px 0px -50px 0px'
@@ -783,6 +802,61 @@
                 }
             });
         });
+        
+        // 检查登录状态
+        function checkLoginStatus() {
+            const user = localStorage.getItem('user');
+            const authLinks = document.getElementById('authLinks');
+            const userInfo = document.getElementById('userInfo');
+            const userName = document.getElementById('userName');
+            
+            if (user) {
+                try {
+                    const userData = JSON.parse(user);
+                    if (userData.userName) {
+                        // 显示用户信息和登出按钮
+                        authLinks.style.display = 'none';
+                        userInfo.style.display = 'flex';
+                        userInfo.style.alignItems = 'center';
+                        userName.textContent = userData.userName;
+                    }
+                } catch (error) {
+                    // 解析失败，清除用户信息
+                    localStorage.removeItem('user');
+                }
+            }
+        }
+        
+        // 登出功能
+        function logout() {
+            // 调用登出接口
+            fetch('/api/user/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('登出失败');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.code === 0) {
+                    // 登出成功
+                    // 清除用户信息
+                    localStorage.removeItem('user');
+                    // 刷新页面
+                    window.location.href = 'index.html';
+                }
+            })
+            .catch(error => {
+                // 网络错误或其他错误，仍然清除用户信息
+                localStorage.removeItem('user');
+                window.location.href = 'index.html';
+            });
+        }
     </script>
 </body>
 </html>

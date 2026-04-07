@@ -1,3 +1,14 @@
+// 检查登录状态
+async function checkLoginStatus() {
+  try {
+    const result = await chrome.storage.local.get('user');
+    return result.user !== undefined;
+  } catch (error) {
+    console.error('检查登录状态失败:', error);
+    return false;
+  }
+}
+
 // 适配器接口，定义平台适配方法
 class PlatformAdapter {
   // 提取用户消息
@@ -694,6 +705,12 @@ class ChatHistoryPlugin {
     this.container = null;
     this.isEnabled = true;
     
+    // API配置
+    this.apiConfig = { ip: '127.0.0.1', port: '8101' };
+    
+    // 用户信息
+    this.userInfo = null;
+    
     // 初始化插件
     this.init();
   }
@@ -731,7 +748,7 @@ class ChatHistoryPlugin {
   }
   
   // 初始化插件
-  init() {
+  async init() {
     try {
       console.log('开始初始化ChatLog插件');
       
@@ -744,11 +761,26 @@ class ChatHistoryPlugin {
       // 创建历史对话容器
       this.createContainer();
       
-      // 初始加载消息
-      this.loadMessages();
+      // 加载API配置
+      await this.loadApiConfig();
+      
+      // 加载用户信息
+      await this.loadUserInfo();
+      
+      // 显示相应的界面
+      if (this.userInfo) {
+        this.showMainContainer();
+        // 初始加载消息
+        this.loadMessages();
+      } else {
+        this.showLoginContainer();
+      }
       
       // 设置事件监听
       this.setupEventListeners();
+      
+      // 绑定认证事件
+      this.bindAuthEvents();
       
       // 监听页面变化，实时更新消息列表
       this.observePageChanges();
@@ -822,12 +854,78 @@ class ChatHistoryPlugin {
     // 容器内容
     this.container.innerHTML = `
       <div class="chat-history-resizer"></div>
-      <div class="chat-history-title">ChatLog <span class="chat-log-subtitle">TT&LL</span></div>
-      <div class="chat-history-hint">点击任意消息可快速跳转</div>
-      <div class="chat-history-search">
-        <input type="text" id="chat-history-search-input" placeholder="搜索历史对话...">
+      <div class="chat-history-title-container">
+        <div class="chat-history-title">ChatLog <span class="chat-log-subtitle">TT&LL</span></div>
+        <button id="logoutButton" class="logout-button" style="display: none;">登出</button>
       </div>
-      <ul class="chat-history-list" id="chat-history-list"></ul>
+      <div class="chat-history-hint">点击任意消息可快速跳转</div>
+      <div id="loginContainer" class="chat-history-auth">
+        <h3>登录</h3>
+        <div class="auth-error" id="loginError"></div>
+        <form id="loginForm">
+          <div class="auth-form-group">
+            <label for="loginAccount">账号</label>
+            <input type="text" id="loginAccount" name="userAccount" placeholder="请输入账号" required>
+          </div>
+          <div class="auth-form-group">
+            <label for="loginPassword">密码</label>
+            <input type="password" id="loginPassword" name="userPassword" placeholder="请输入密码" required>
+          </div>
+          <button type="submit" class="auth-button" id="loginButton">登录</button>
+        </form>
+        <div class="auth-link">
+          还没有账号？ <a href="#" id="showRegister">立即注册</a>
+        </div>
+        <div class="auth-link">
+          <a href="#" id="showConfig">接口配置</a>
+        </div>
+      </div>
+      <div id="registerContainer" class="chat-history-auth" style="display: none;">
+        <h3>注册</h3>
+        <div class="auth-error" id="registerError"></div>
+        <form id="registerForm">
+          <div class="auth-form-group">
+            <label for="registerAccount">账号</label>
+            <input type="text" id="registerAccount" name="userAccount" placeholder="请输入账号" required>
+          </div>
+          <div class="auth-form-group">
+            <label for="registerPassword">密码</label>
+            <input type="password" id="registerPassword" name="userPassword" placeholder="请输入密码" required>
+          </div>
+          <div class="auth-form-group">
+            <label for="registerCheckPassword">确认密码</label>
+            <input type="password" id="registerCheckPassword" name="checkPassword" placeholder="请确认密码" required>
+          </div>
+          <button type="submit" class="auth-button" id="registerButton">注册</button>
+        </form>
+        <div class="auth-link">
+          已经有账号？ <a href="#" id="showLogin">立即登录</a>
+        </div>
+      </div>
+      <div id="configContainer" class="chat-history-auth" style="display: none;">
+        <h3>接口配置</h3>
+        <div class="auth-success" id="configSuccess"></div>
+        <form id="configForm">
+          <div class="auth-form-group">
+            <label for="apiIp">API IP</label>
+            <input type="text" id="apiIp" name="apiIp" placeholder="请输入API IP" required>
+          </div>
+          <div class="auth-form-group">
+            <label for="apiPort">API 端口</label>
+            <input type="number" id="apiPort" name="apiPort" placeholder="请输入API端口" required>
+          </div>
+          <button type="submit" class="auth-button" id="configButton">保存配置</button>
+        </form>
+        <div class="auth-link">
+          <a href="#" id="backToLogin">返回登录</a>
+        </div>
+      </div>
+      <div id="mainContainer" class="chat-history-main" style="display: none;">
+        <div class="chat-history-search">
+          <input type="text" id="chat-history-search-input" placeholder="搜索历史对话...">
+        </div>
+        <ul class="chat-history-list" id="chat-history-list"></ul>
+      </div>
     `;
     
     // 添加到页面
@@ -952,6 +1050,345 @@ class ChatHistoryPlugin {
     // 可以添加其他事件监听，如键盘快捷键等
   }
   
+  // 加载API配置
+  async loadApiConfig() {
+    try {
+      const result = await chrome.storage.local.get('apiConfig');
+      if (result.apiConfig) {
+        this.apiConfig = result.apiConfig;
+      }
+      // 填充配置表单
+      const apiIpInput = document.getElementById('apiIp');
+      const apiPortInput = document.getElementById('apiPort');
+      if (apiIpInput && apiPortInput) {
+        apiIpInput.value = this.apiConfig.ip;
+        apiPortInput.value = this.apiConfig.port;
+      }
+    } catch (error) {
+      console.error('加载API配置失败:', error);
+    }
+  }
+  
+  // 保存API配置
+  async saveApiConfig(config) {
+    try {
+      await chrome.storage.local.set({ apiConfig: config });
+      this.apiConfig = config;
+    } catch (error) {
+      console.error('保存API配置失败:', error);
+    }
+  }
+  
+  // 加载用户信息
+  async loadUserInfo() {
+    try {
+      const result = await chrome.storage.local.get('user');
+      if (result.user) {
+        this.userInfo = result.user;
+      }
+    } catch (error) {
+      console.error('加载用户信息失败:', error);
+    }
+  }
+  
+  // 保存用户信息
+  async saveUserInfo(user) {
+    try {
+      await chrome.storage.local.set({ user: user });
+      this.userInfo = user;
+    } catch (error) {
+      console.error('保存用户信息失败:', error);
+    }
+  }
+  
+  // 清除用户信息
+  async clearUserInfo() {
+    try {
+      await chrome.storage.local.remove('user');
+      this.userInfo = null;
+    } catch (error) {
+      console.error('清除用户信息失败:', error);
+    }
+  }
+  
+  // 显示登录界面
+  showLoginContainer() {
+    document.getElementById('loginContainer').style.display = 'block';
+    document.getElementById('registerContainer').style.display = 'none';
+    document.getElementById('configContainer').style.display = 'none';
+    document.getElementById('mainContainer').style.display = 'none';
+    document.getElementById('logoutButton').style.display = 'none';
+    document.querySelector('.chat-history-hint').style.display = 'none';
+  }
+  
+  // 显示注册界面
+  showRegisterContainer() {
+    document.getElementById('loginContainer').style.display = 'none';
+    document.getElementById('registerContainer').style.display = 'block';
+    document.getElementById('configContainer').style.display = 'none';
+    document.getElementById('mainContainer').style.display = 'none';
+    document.getElementById('logoutButton').style.display = 'none';
+    document.querySelector('.chat-history-hint').style.display = 'none';
+  }
+  
+  // 显示配置界面
+  showConfigContainer() {
+    document.getElementById('loginContainer').style.display = 'none';
+    document.getElementById('registerContainer').style.display = 'none';
+    document.getElementById('configContainer').style.display = 'block';
+    document.getElementById('mainContainer').style.display = 'none';
+    document.getElementById('logoutButton').style.display = 'none';
+    document.querySelector('.chat-history-hint').style.display = 'none';
+    
+    // 填充配置表单
+    const apiIpInput = document.getElementById('apiIp');
+    const apiPortInput = document.getElementById('apiPort');
+    if (apiIpInput && apiPortInput) {
+      apiIpInput.value = this.apiConfig.ip;
+      apiPortInput.value = this.apiConfig.port;
+    }
+  }
+  
+  // 显示主功能界面
+  showMainContainer() {
+    document.getElementById('loginContainer').style.display = 'none';
+    document.getElementById('registerContainer').style.display = 'none';
+    document.getElementById('configContainer').style.display = 'none';
+    document.getElementById('mainContainer').style.display = 'block';
+    document.getElementById('logoutButton').style.display = 'block';
+    document.querySelector('.chat-history-hint').style.display = 'block';
+  }
+  
+  // 绑定认证事件
+  bindAuthEvents() {
+    // 登录表单提交
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const userAccount = document.getElementById('loginAccount').value;
+        const userPassword = document.getElementById('loginPassword').value;
+        
+        // 显示加载状态
+        const loginButton = document.getElementById('loginButton');
+        const loginError = document.getElementById('loginError');
+        loginButton.disabled = true;
+        loginButton.textContent = '登录中...';
+        loginError.style.display = 'none';
+        
+        try {
+          // 调用登录接口
+          const response = await fetch(`http://${this.apiConfig.ip}:${this.apiConfig.port}/api/user/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userAccount: userAccount,
+              userPassword: userPassword
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error('登录失败');
+          }
+          
+          const data = await response.json();
+          
+          if (data.code === 0) {
+            // 登录成功
+            await this.saveUserInfo(data.data);
+            this.showMainContainer();
+            this.loadMessages();
+          } else {
+            // 登录失败
+            loginError.textContent = data.message || '账号或密码错误';
+            loginError.style.display = 'block';
+          }
+        } catch (error) {
+          // 网络错误或其他错误
+          loginError.textContent = '登录失败，请稍后重试';
+          loginError.style.display = 'block';
+        } finally {
+          // 恢复按钮状态
+          loginButton.disabled = false;
+          loginButton.textContent = '登录';
+        }
+      });
+    }
+    
+    // 注册表单提交
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) {
+      registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const userAccount = document.getElementById('registerAccount').value;
+        const userPassword = document.getElementById('registerPassword').value;
+        const checkPassword = document.getElementById('registerCheckPassword').value;
+        
+        // 表单验证
+        const registerError = document.getElementById('registerError');
+        if (userPassword !== checkPassword) {
+          registerError.textContent = '密码和确认密码不一致';
+          registerError.style.display = 'block';
+          return;
+        }
+        
+        // 显示加载状态
+        const registerButton = document.getElementById('registerButton');
+        registerButton.disabled = true;
+        registerButton.textContent = '注册中...';
+        registerError.style.display = 'none';
+        
+        try {
+          // 调用注册接口
+          const response = await fetch(`http://${this.apiConfig.ip}:${this.apiConfig.port}/api/user/register`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userAccount: userAccount,
+              userPassword: userPassword,
+              checkPassword: checkPassword
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error('注册失败');
+          }
+          
+          const data = await response.json();
+          
+          if (data.code === 0) {
+            // 注册成功，跳转到登录界面
+            this.showLoginContainer();
+            // 清空登录表单
+            document.getElementById('loginAccount').value = '';
+            document.getElementById('loginPassword').value = '';
+          } else {
+            // 注册失败
+            registerError.textContent = data.message || '注册失败，请稍后重试';
+            registerError.style.display = 'block';
+          }
+        } catch (error) {
+          // 网络错误或其他错误
+          registerError.textContent = '注册失败，请稍后重试';
+          registerError.style.display = 'block';
+        } finally {
+          // 恢复按钮状态
+          registerButton.disabled = false;
+          registerButton.textContent = '注册';
+        }
+      });
+    }
+    
+    // 配置表单提交
+    const configForm = document.getElementById('configForm');
+    if (configForm) {
+      configForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const apiIp = document.getElementById('apiIp').value;
+        const apiPort = document.getElementById('apiPort').value;
+        
+        // 显示加载状态
+        const configButton = document.getElementById('configButton');
+        const configSuccess = document.getElementById('configSuccess');
+        configButton.disabled = true;
+        configButton.textContent = '保存中...';
+        configSuccess.style.display = 'none';
+        
+        try {
+          // 保存配置
+          await this.saveApiConfig({ ip: apiIp, port: apiPort });
+          
+          // 显示成功提示
+          configSuccess.textContent = '配置保存成功';
+          configSuccess.style.display = 'block';
+          
+          // 3秒后返回登录界面
+          setTimeout(() => {
+            this.showLoginContainer();
+          }, 3000);
+        } catch (error) {
+          console.error('保存配置失败:', error);
+        } finally {
+          // 恢复按钮状态
+          configButton.disabled = false;
+          configButton.textContent = '保存配置';
+        }
+      });
+    }
+    
+    // 登出按钮点击
+    const logoutButton = document.getElementById('logoutButton');
+    if (logoutButton) {
+      logoutButton.addEventListener('click', async () => {
+        try {
+          // 调用登出接口
+          await fetch(`http://${this.apiConfig.ip}:${this.apiConfig.port}/api/user/logout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+        } catch (error) {
+          console.error('登出失败:', error);
+        } finally {
+          // 清除用户信息
+          await this.clearUserInfo();
+          // 跳转到登录界面
+          this.showLoginContainer();
+          // 清空所有表单
+          document.getElementById('loginAccount').value = '';
+          document.getElementById('loginPassword').value = '';
+          document.getElementById('registerAccount').value = '';
+          document.getElementById('registerPassword').value = '';
+          document.getElementById('registerCheckPassword').value = '';
+        }
+      });
+    }
+    
+    // 显示注册界面
+    const showRegister = document.getElementById('showRegister');
+    if (showRegister) {
+      showRegister.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.showRegisterContainer();
+      });
+    }
+    
+    // 显示登录界面
+    const showLogin = document.getElementById('showLogin');
+    if (showLogin) {
+      showLogin.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.showLoginContainer();
+      });
+    }
+    
+    // 显示配置界面
+    const showConfig = document.getElementById('showConfig');
+    if (showConfig) {
+      showConfig.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.showConfigContainer();
+      });
+    }
+    
+    // 返回登录界面
+    const backToLogin = document.getElementById('backToLogin');
+    if (backToLogin) {
+      backToLogin.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.showLoginContainer();
+      });
+    }
+  }
+  
   // 监听页面变化
   observePageChanges() {
     // 使用MutationObserver监听页面变化
@@ -990,7 +1427,7 @@ class ChatHistoryPlugin {
 }
 
 // 当DOM加载完成后初始化插件
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   try {
     new ChatHistoryPlugin();
   } catch (error) {
@@ -999,7 +1436,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // 当页面加载完成后也初始化一次（确保在SPA路由变化时也能初始化）
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   try {
     new ChatHistoryPlugin();
   } catch (error) {
